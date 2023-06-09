@@ -1,0 +1,109 @@
+name: deploy
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+env:
+  AWS_REGION: us-west-2
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.envcheck.outputs.status }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - id: envcheck
+        name: Check environment variables
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          INDENT_WEBHOOK_SECRET: ${{ secrets.INDENT_WEBHOOK_SECRET }}
+        run: |
+          status="deploy"
+          if [ "$AWS_ACCESS_KEY_ID" == "" ] ||
+             [ "$AWS_SECRET_ACCESS_KEY" == "" ] ||
+             [ "$INDENT_WEBHOOK_SECRET" == "" ]
+          then
+            status="skip"
+            echo "Missing required enviroment variable(s)"
+          fi
+          echo "status=$status" >> $GITHUB_OUTPUT
+  terraform:
+    name: Terraform
+    needs: validate
+    if: needs.validate.outputs.status == 'deploy'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Add profile credentials to ~/.aws/credentials
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }} --profile default
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }} --profile default
+          aws configure set aws_region ${{ env.AWS_REGION }} --profile default
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -diff
+      - name: Terraform Init
+        id: init
+        run: terraform init
+      - name: Terraform Plan
+        id: plan
+        if: github.event_name == 'pull_request'
+        run: terraform plan -input=false -no-color
+        continue-on-error: true
+        env:
+          TF_VAR_indent_webhook_secret: ${{ secrets.INDENT_WEBHOOK_SECRET }}
+          TF_VAR_cloudflare_token: ${{ secrets.CLOUDFLARE_TOKEN }}
+          TF_VAR_cloudflare_account: ${{ secrets.CLOUDFLARE_ACCOUNT }}
+      - uses: actions/github-script@0.9.0
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: |-
+            terraform
+            ${{ steps.plan.outputs.stdout }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+            <details><summary>Show Plan</summary>
+            \`\`\`${process.env.PLAN}\`\`\`
+            </details>
+            *Actor: @${{ github.actor }}, Event: \`${{ github.event_name }}\`*`;
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: terraform apply -input=false -auto-approve
+        env:
+          TF_VAR_indent_webhook_secret: ${{ secrets.INDENT_WEBHOOK_SECRET }}
+          TF_VAR_cloudflare_token: ${{ secrets.CLOUDFLARE_TOKEN }}
+          TF_VAR_cloudflare_account: ${{ secrets.CLOUDFLARE_ACCOUNT }}
+      - name: Terraform Output
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: terraform output
+        env:
+          TF_VAR_indent_webhook_secret: ${{ secrets.INDENT_WEBHOOK_SECRET }}
+          TF_VAR_example_api_key: ${{ secrets.EXAMPLE_API_KEY}}
