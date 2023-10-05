@@ -10,8 +10,8 @@ terraform {
 
 # Indent + Cloudflare Integration
 
-# Details: https://github.com/indentapis/integrations/tree/dbd8daa41dbfdf0d2b2f5fae9ff74cd858452f55/packages/beta/indent-integration-cloudflare
-# Last Change: https://github.com/indentapis/integrations/commit/dbd8daa41dbfdf0d2b2f5fae9ff74cd858452f55
+# Details: https://github.com/indentapis/integrations/tree/a92c460436809126aa494a6e033394196aacea44/packages/beta/indent-integration-cloudflare
+# Last Change: https://github.com/indentapis/integrations/commit/a92c460436809126aa494a6e033394196aacea44
 
 module "idt-cloudflare-webhook" {
   source                = "git::https://github.com/indentapis/integrations//terraform/modules/indent_runtime_aws_lambda"
@@ -19,8 +19,8 @@ module "idt-cloudflare-webhook" {
   indent_webhook_secret = var.indent_webhook_secret
   artifact = {
     bucket       = "indent-artifacts-us-west-2"
-    function_key = "webhooks/aws/lambda/cloudflare-dbd8daa41dbfdf0d2b2f5fae9ff74cd858452f55-function.zip"
-    deps_key     = "webhooks/aws/lambda/cloudflare-dbd8daa41dbfdf0d2b2f5fae9ff74cd858452f55-deps.zip"
+    function_key = "webhooks/aws/lambda/cloudflare-a92c460436809126aa494a6e033394196aacea44-function.zip"
+    deps_key     = "webhooks/aws/lambda/cloudflare-a92c460436809126aa494a6e033394196aacea44-deps.zip"
   }
   env = {
     CLOUDFLARE_TOKEN   = var.cloudflare_token
